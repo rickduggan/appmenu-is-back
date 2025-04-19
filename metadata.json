@@ -2,7 +2,7 @@
   "description": "The good old original app menu. Uses native GNOME Shell button.\n\n For a customizable app menu, please consider 'Window title is back' extension.",
   "name": "App menu is back",
   "shell-version": ["46", "47", "48"],
-  "url": "https://github.com/fthx/appmenu-is-back",
-  "uuid": "appmenu-is-back@fthx",
+  "url": "https://github.com/rickduggan/appmenu-is-back",
+  "uuid": "appmenu-is-back@rickduggan.net",
   "version": 999
 }

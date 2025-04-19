@@ -28,6 +28,10 @@ export default class AppMenuIsBackExtension {
         // Create our sorted version of AppMenu
         const SortedAppMenu = GObject.registerClass(
         class SortedAppMenu extends AppMenu.AppMenu {
+            _init(sourceActor) {
+                super._init(sourceActor);  // Add proper initialization
+            }
+
             _updateWindowList() {
                 // First call parent's _updateWindowList to populate items
                 super._updateWindowList();
