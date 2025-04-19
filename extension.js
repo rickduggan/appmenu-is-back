@@ -16,116 +16,99 @@ export default class AppMenuIsBackExtension {
         log('AppMenu Debug: Starting to collect window items');
         log(`AppMenu Debug: Total menu items found: ${items.length}`);
         
-        // Find the "Open Windows" section
+        // Find or create the "Open Windows" section
         let openWindowsSection = null;
-        let openWindowsIndex = -1;
-        for (let i = 0; i < items.length; i++) {
-            let item = items[i];
+        let openWindowsLabel = null;
+        
+        // First try to find existing section
+        for (let item of items) {
             if (item.label && item.label.text === 'Open Windows') {
-                openWindowsSection = item;
-                openWindowsIndex = i;
-                log('AppMenu Debug: Found "Open Windows" section');
+                openWindowsLabel = item;
+                // The section should be the next item
+                let idx = items.indexOf(item);
+                if (idx >= 0 && idx + 1 < items.length) {
+                    openWindowsSection = items[idx + 1];
+                }
                 break;
             }
         }
         
+        // If we didn't find the section, create it
         if (!openWindowsSection) {
-            log('AppMenu Debug: "Open Windows" section not found');
-            return;
-        }
-
-        // Store the original items after the "Open Windows" section
-        let itemsToRemove = [];
-        for (let i = openWindowsIndex + 1; i < items.length; i++) {
-            itemsToRemove.push(items[i]);
+            log('AppMenu Debug: Creating new Open Windows section');
+            if (!openWindowsLabel) {
+                openWindowsLabel = new PopupMenu.PopupMenuItem('Open Windows', { reactive: false });
+                menu.addMenuItem(openWindowsLabel);
+            }
+            openWindowsSection = new PopupMenu.PopupMenuSection();
+            menu.addMenuItem(openWindowsSection);
         }
         
-        // Find the app menu item that corresponds to the current application
-        let appMenuItem = null;
-        for (let i = 0; i < items.length; i++) {
-            let item = items[i];
-            if (item.label && item.label.text && item.label.text !== 'Open Windows') {
-                appMenuItem = item;
-                log(`AppMenu Debug: Found app menu item: "${item.label.text}"`);
-                break;
-            }
-        }
-        
-        if (!appMenuItem) {
-            log('AppMenu Debug: Could not find app menu item');
+        // Get the app info from the menu
+        let appInfo = menu._app;
+        if (!appInfo) {
+            log('AppMenu Debug: Could not find app info');
             return;
         }
-        
-        // Get the app info from the app menu item
-        let appInfo = null;
-        try {
-            if (menu._app) {
-                appInfo = menu._app;
-                log(`AppMenu Debug: Found app info from menu._app`);
-            }
-            
-            if (appInfo) {
-                log(`AppMenu Debug: App info found: ${appInfo.get_id()}`);
-            } else {
-                log('AppMenu Debug: Could not find app info');
-                return;
-            }
-        } catch (e) {
-            log(`AppMenu Debug: Error getting app info: ${e.message}`);
-            return;
-        }
+        log(`AppMenu Debug: App info found: ${appInfo.get_id()}`);
         
         // Get all windows from the window manager
-        let allWindows = [];
+        let appWindows = [];
         try {
             let windowManager = global.window_manager;
             if (windowManager) {
                 let activeWorkspace = global.workspace_manager.get_active_workspace();
-                allWindows = activeWorkspace.list_windows();
+                let allWindows = activeWorkspace.list_windows();
                 log(`AppMenu Debug: Window manager reports ${allWindows.length} windows on active workspace`);
+                
+                // Filter windows for this application
+                let baseAppName = appInfo.get_id().split('.')[0];
+                for (let win of allWindows) {
+                    try {
+                        let winWmClass = typeof win.get_wm_class === 'function' ? win.get_wm_class() : '';
+                        if (winWmClass && winWmClass.toLowerCase() === baseAppName.toLowerCase()) {
+                            appWindows.push(win);
+                            log(`AppMenu Debug: Found matching window: ${win.get_title()}`);
+                        }
+                    } catch (e) {
+                        log(`AppMenu Debug: Error checking window: ${e.message}`);
+                    }
+                }
             }
         } catch (e) {
             log(`AppMenu Debug: Error accessing window manager: ${e.message}`);
             return;
         }
         
-        // Filter windows to only include those for the current application
-        let appWindows = [];
-        try {
-            let appId = appInfo.get_id();
-            let baseAppName = appId.split('.')[0];
-            
-            for (let win of allWindows) {
-                try {
-                    let winWmClass = typeof win.get_wm_class === 'function' ? win.get_wm_class() : '';
-                    if (winWmClass && winWmClass.toLowerCase() === baseAppName.toLowerCase()) {
-                        appWindows.push(win);
-                        log(`AppMenu Debug: Found matching window: ${win.get_title()}`);
-                    }
-                } catch (e) {
-                    log(`AppMenu Debug: Error checking window: ${e.message}`);
-                }
-            }
-            
-            log(`AppMenu Debug: Found ${appWindows.length} windows for current application`);
-        } catch (e) {
-            log(`AppMenu Debug: Error filtering windows: ${e.message}`);
-            return;
-        }
+        log(`AppMenu Debug: Found ${appWindows.length} windows for current application`);
         
         // Sort windows by title
         appWindows.sort((a, b) => {
             let titleA = typeof a.get_title === 'function' ? a.get_title() : '';
             let titleB = typeof b.get_title === 'function' ? b.get_title() : '';
-            return titleA.localeCompare(titleB);
-        });
 
-        // Remove old window items
-        for (let item of itemsToRemove) {
-            item.destroy();
-        }
+            // Special case: plain "Mozilla Firefox" should come first
+            if (titleA === 'Mozilla Firefox') return -1;
+            if (titleB === 'Mozilla Firefox') return 1;
+
+            // Remove emoji and other special characters for sorting
+            const cleanTitle = (title) => {
+                // Remove emoji and other special characters but keep spaces and standard punctuation
+                return title.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2700}-\u{27BF}]|[\u{1F000}-\u{1F02F}]|[\u{1F0A0}-\u{1F0FF}]|[\u{1F100}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]/gu, '')
+                    .replace(/^[^a-zA-Z0-9]+/, '') // Remove leading special characters
+                    .trim();
+            };
+
+            let cleanA = cleanTitle(titleA);
+            let cleanB = cleanTitle(titleB);
+
+            return cleanA.localeCompare(cleanB);
+        });
         
-        // Create menu items for each window
+        // Clear existing items in the section
+        openWindowsSection.removeAll();
+        
+        // Add window items to the section
         log('AppMenu Debug: Creating menu items for windows');
         for (let win of appWindows) {
             try {
@@ -137,7 +120,7 @@ export default class AppMenuIsBackExtension {
                     win.activate(global.get_current_time());
                 });
                 
-                menu.addMenuItem(menuItem, openWindowsIndex + 1);
+                openWindowsSection.addMenuItem(menuItem);
                 log(`AppMenu Debug: Added menu item: "${title}"`);
             } catch (e) {
                 log(`AppMenu Debug: Error creating menu item: ${e.message}`);
