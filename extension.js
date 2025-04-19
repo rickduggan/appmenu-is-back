@@ -14,29 +14,41 @@ export default class AppMenuIsBackExtension {
         let windowItems = [];
         let items = menu._getMenuItems();
         
+        log('AppMenu Debug: Starting to collect window items');
+        
         // Collect window items and remove them from menu
         for (let i = 0; i < items.length; i++) {
             let item = items[i];
             if (item.window) {
+                let title = item.window.get_title();
+                log(`AppMenu Debug: Found window with title: "${title}"`);
                 windowItems.push(item);
                 item.destroy(); // Remove from menu
             }
         }
+
+        log(`AppMenu Debug: Found ${windowItems.length} windows total`);
 
         // Sort window items by title
         windowItems.sort((a, b) => {
             let titleA = a.window.get_title() || '';
             let titleB = b.window.get_title() || '';
             
+            log(`AppMenu Debug: Comparing "${titleA}" with "${titleB}"`);
+            
             // Function to extract numbers from start of string
             const getLeadingNumber = (str) => {
                 const match = str.match(/^[0-9]+/);
-                return match ? parseInt(match[0]) : null;
+                const result = match ? parseInt(match[0]) : null;
+                log(`AppMenu Debug: Leading number for "${str}" is ${result}`);
+                return result;
             };
             
             // Function to clean string for sorting
             const cleanString = (str) => {
-                return str.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+                const cleaned = str.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+                log(`AppMenu Debug: Cleaned string "${str}" to "${cleaned}"`);
+                return cleaned;
             };
             
             // Check for leading numbers first
@@ -44,24 +56,33 @@ export default class AppMenuIsBackExtension {
             const numB = getLeadingNumber(titleB);
             
             if (numA !== null && numB !== null) {
+                log(`AppMenu Debug: Comparing numbers ${numA} and ${numB}`);
                 return numA - numB;
             } else if (numA !== null) {
+                log(`AppMenu Debug: ${titleA} has number, ${titleB} doesn't`);
                 return -1;
             } else if (numB !== null) {
+                log(`AppMenu Debug: ${titleB} has number, ${titleA} doesn't`);
                 return 1;
             }
             
             // If no numbers, sort alphabetically ignoring special characters
-            return cleanString(titleA).localeCompare(cleanString(titleB));
+            const result = cleanString(titleA).localeCompare(cleanString(titleB));
+            log(`AppMenu Debug: Comparing cleaned strings, result: ${result}`);
+            return result;
         });
 
+        log('AppMenu Debug: Finished sorting, adding items back to menu');
+        
         // Add sorted items back to menu
         for (let item of windowItems) {
+            log(`AppMenu Debug: Adding window "${item.window.get_title()}" to menu`);
             menu.addMenuItem(item);
         }
     }
 
     enable() {
+        log('Extension enabled!');  // Test log
         if (!Main.sessionMode.panel.left.includes('appMenu')) {
             Main.sessionMode.panel.left.push('appMenu');
             Main.panel._updatePanel();
