@@ -62,11 +62,71 @@ export default class AppMenuIsBackExtension {
                 log(`AppMenu Debug: Window manager reports ${allWindows.length} windows on active workspace`);
                 
                 // Filter windows for this application
-                let baseAppName = appInfo.get_id().split('.')[0];
+                let baseAppName = appInfo.get_id().split('.')[0].toLowerCase();
+                let appIdParts = appInfo.get_id().toLowerCase().split('.');
+                
                 for (let win of allWindows) {
                     try {
                         let winWmClass = typeof win.get_wm_class === 'function' ? win.get_wm_class() : '';
-                        if (winWmClass && winWmClass.toLowerCase() === baseAppName.toLowerCase()) {
+                        if (!winWmClass) continue;
+                        
+                        winWmClass = winWmClass.toLowerCase();
+                        log(`AppMenu Debug: Checking window WM_CLASS: ${winWmClass} against app: ${appInfo.get_id()}`);
+                        
+                        // Try different matching patterns
+                        let isMatch = false;
+                        
+                        // Pattern 1: Direct WM_CLASS match with base name
+                        if (winWmClass === baseAppName) {
+                            isMatch = true;
+                            log(`AppMenu Debug: Matched by base name`);
+                        }
+                        
+                        // Pattern 2: WM_CLASS matches any part of the app ID
+                        if (!isMatch) {
+                            for (let part of appIdParts) {
+                                if (winWmClass === part) {
+                                    isMatch = true;
+                                    log(`AppMenu Debug: Matched by app ID part`);
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // Pattern 3: Handle special cases
+                        if (!isMatch) {
+                            const specialCases = {
+                                'org.gnome.terminal': ['gnome-terminal', 'terminal'],
+                                'firefox': ['navigator']  // Some Firefox windows use "navigator"
+                            };
+                            
+                            let appId = appInfo.get_id().toLowerCase();
+                            if (specialCases[appId]) {
+                                isMatch = specialCases[appId].includes(winWmClass);
+                                if (isMatch) {
+                                    log(`AppMenu Debug: Matched by special case for ${appId}`);
+                                }
+                            }
+                        }
+                        
+                        // Pattern 4: Handle hyphenated variants
+                        if (!isMatch) {
+                            let hyphenated = baseAppName.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
+                            if (winWmClass === hyphenated) {
+                                isMatch = true;
+                                log(`AppMenu Debug: Matched by hyphenated name`);
+                            }
+                        }
+
+                        // Pattern 5: Handle GNOME Terminal specific case
+                        if (!isMatch && appInfo.get_id().toLowerCase().includes('gnome.terminal')) {
+                            if (winWmClass === 'gnome-terminal' || winWmClass === 'terminal') {
+                                isMatch = true;
+                                log(`AppMenu Debug: Matched GNOME Terminal window`);
+                            }
+                        }
+                        
+                        if (isMatch) {
                             appWindows.push(win);
                             log(`AppMenu Debug: Found matching window: ${win.get_title()}`);
                         }
