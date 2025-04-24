@@ -4,6 +4,7 @@
 
 
 import GLib from 'gi://GLib';
+import Meta from 'gi://Meta';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
@@ -65,8 +66,22 @@ export default class AppMenuIsBackExtension {
                 let baseAppName = appInfo.get_id().split('.')[0];
                 for (let win of allWindows) {
                     try {
-                        let winWmClass = typeof win.get_wm_class === 'function' ? win.get_wm_class() : '';
-                        if (winWmClass && winWmClass.toLowerCase() === baseAppName.toLowerCase()) {
+                        // Try multiple methods to get window class/name
+                        let winWmClass = '';
+                        if (typeof win.get_wm_class === 'function') {
+                            winWmClass = win.get_wm_class();
+                        } else if (win.get_wm_class_instance) {
+                            winWmClass = win.get_wm_class_instance();
+                        } else if (win.get_gtk_application_id) {
+                            winWmClass = win.get_gtk_application_id();
+                        }
+                        
+                        // For Wayland, we might need to check the app_id
+                        let appId = win.get_gtk_application_id ? win.get_gtk_application_id() : '';
+                        let matches = winWmClass && winWmClass.toLowerCase() === baseAppName.toLowerCase();
+                        let appIdMatches = appId && appId.toLowerCase().includes(baseAppName.toLowerCase());
+                        
+                        if (matches || appIdMatches) {
                             appWindows.push(win);
                             log(`AppMenu Debug: Found matching window: ${win.get_title()}`);
                         }
