@@ -151,6 +151,14 @@ export default class AppMenuIsBackExtension {
             if (titleA === 'Mozilla Firefox') return -1;
             if (titleB === 'Mozilla Firefox') return 1;
 
+            // Check if titles start with quotes
+            let aStartsWithQuote = /^["'`]/.test(titleA);
+            let bStartsWithQuote = /^["'`]/.test(titleB);
+
+            // Items without leading quotes come first
+            if (aStartsWithQuote && !bStartsWithQuote) return 1;
+            if (!aStartsWithQuote && bStartsWithQuote) return -1;
+
             // Remove emoji and other special characters for sorting
             const cleanTitle = (title) => {
                 // Remove emoji and other special characters but keep spaces and standard punctuation
