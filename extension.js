@@ -52,125 +52,53 @@ export default class AppMenuIsBackExtension {
         }
         log(`AppMenu Debug: App info found: ${appInfo.get_id()}`);
         
-        // Get all windows from the window manager
+        // Get this app's windows on the active workspace
         let appWindows = [];
         try {
-            let windowManager = global.window_manager;
-            if (windowManager) {
-                let activeWorkspace = global.workspace_manager.get_active_workspace();
-                let allWindows = activeWorkspace.list_windows();
-                log(`AppMenu Debug: Window manager reports ${allWindows.length} windows on active workspace`);
-                
-                // Filter windows for this application
-                let baseAppName = appInfo.get_id().split('.')[0].toLowerCase();
-                let appIdParts = appInfo.get_id().toLowerCase().split('.');
-                
-                for (let win of allWindows) {
-                    try {
-                        let winWmClass = typeof win.get_wm_class === 'function' ? win.get_wm_class() : '';
-                        if (!winWmClass) continue;
-                        
-                        winWmClass = winWmClass.toLowerCase();
-                        log(`AppMenu Debug: Checking window WM_CLASS: ${winWmClass} against app: ${appInfo.get_id()}`);
-                        
-                        // Try different matching patterns
-                        let isMatch = false;
-                        
-                        // Pattern 1: Direct WM_CLASS match with base name
-                        if (winWmClass === baseAppName) {
-                            isMatch = true;
-                            log(`AppMenu Debug: Matched by base name`);
-                        }
-                        
-                        // Pattern 2: WM_CLASS matches any part of the app ID
-                        if (!isMatch) {
-                            for (let part of appIdParts) {
-                                if (winWmClass === part) {
-                                    isMatch = true;
-                                    log(`AppMenu Debug: Matched by app ID part`);
-                                    break;
-                                }
-                            }
-                        }
-                        
-                        // Pattern 3: Handle special cases
-                        if (!isMatch) {
-                            const specialCases = {
-                                'org.gnome.terminal': ['gnome-terminal', 'terminal'],
-                                'firefox': ['navigator']  // Some Firefox windows use "navigator"
-                            };
-                            
-                            let appId = appInfo.get_id().toLowerCase();
-                            if (specialCases[appId]) {
-                                isMatch = specialCases[appId].includes(winWmClass);
-                                if (isMatch) {
-                                    log(`AppMenu Debug: Matched by special case for ${appId}`);
-                                }
-                            }
-                        }
-                        
-                        // Pattern 4: Handle hyphenated variants
-                        if (!isMatch) {
-                            let hyphenated = baseAppName.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
-                            if (winWmClass === hyphenated) {
-                                isMatch = true;
-                                log(`AppMenu Debug: Matched by hyphenated name`);
-                            }
-                        }
-
-                        // Pattern 5: Handle GNOME Terminal specific case
-                        if (!isMatch && appInfo.get_id().toLowerCase().includes('gnome.terminal')) {
-                            if (winWmClass === 'gnome-terminal' || winWmClass === 'terminal') {
-                                isMatch = true;
-                                log(`AppMenu Debug: Matched GNOME Terminal window`);
-                            }
-                        }
-                        
-                        if (isMatch) {
-                            appWindows.push(win);
-                            log(`AppMenu Debug: Found matching window: ${win.get_title()}`);
-                        }
-                    } catch (e) {
-                        log(`AppMenu Debug: Error checking window: ${e.message}`);
-                    }
-                }
-            }
+            let activeWorkspace = global.workspace_manager.get_active_workspace();
+            appWindows = appInfo.get_windows().filter(win =>
+                win.get_workspace() === activeWorkspace || win.is_on_all_workspaces());
         } catch (e) {
-            log(`AppMenu Debug: Error accessing window manager: ${e.message}`);
+            log(`AppMenu Debug: Error getting app windows: ${e.message}`);
             return;
         }
         
         log(`AppMenu Debug: Found ${appWindows.length} windows for current application`);
         
-        // Sort windows by title
+        const stripEmoji = (title) => {
+            return title.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2700}-\u{27BF}]|[\u{1F000}-\u{1F02F}]|[\u{1F0A0}-\u{1F0FF}]|[\u{1F100}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]/gu, '')
+                .trimStart();
+        };
+
+        // Remove emoji, quotes, and the " — App Name" suffix for sorting
+        const cleanTitle = (title) => {
+            return stripEmoji(title)
+                .replace(/\s+\u2014\s+[^\u2014]*$/, '') // Remove trailing " — Mozilla Firefox" etc.
+                .replace(/^[^a-zA-Z0-9]+/, '') // Remove leading special characters
+                .replace(/["'`\u201C\u201D\u2018\u2019]+$/, '') // Remove trailing quotes
+                .trim();
+        };
+
+        // Sort windows by title. Unquoted titles (including empty or emoji-only
+        // ones, which sort to the very top) come before quoted titles.
         appWindows.sort((a, b) => {
-            let titleA = typeof a.get_title === 'function' ? a.get_title() : '';
-            let titleB = typeof b.get_title === 'function' ? b.get_title() : '';
+            let titleA = (typeof a.get_title === 'function' && a.get_title()) || '';
+            let titleB = (typeof b.get_title === 'function' && b.get_title()) || '';
 
             // Special case: plain "Mozilla Firefox" should come first
-            if (titleA === 'Mozilla Firefox') return -1;
-            if (titleB === 'Mozilla Firefox') return 1;
+            let aIsFirefox = titleA === 'Mozilla Firefox';
+            let bIsFirefox = titleB === 'Mozilla Firefox';
+            if (aIsFirefox !== bIsFirefox) return aIsFirefox ? -1 : 1;
 
-            // Check if titles start with quotes
-            let aStartsWithQuote = /^["'`]/.test(titleA);
-            let bStartsWithQuote = /^["'`]/.test(titleB);
+            // Items without leading quotes (ignoring emoji) come first
+            let aStartsWithQuote = /^["'`\u201C\u2018]/.test(stripEmoji(titleA));
+            let bStartsWithQuote = /^["'`\u201C\u2018]/.test(stripEmoji(titleB));
+            if (aStartsWithQuote !== bStartsWithQuote) return aStartsWithQuote ? 1 : -1;
 
-            // Items without leading quotes come first
-            if (aStartsWithQuote && !bStartsWithQuote) return 1;
-            if (!aStartsWithQuote && bStartsWithQuote) return -1;
-
-            // Remove emoji and other special characters for sorting
-            const cleanTitle = (title) => {
-                // Remove emoji and other special characters but keep spaces and standard punctuation
-                return title.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2700}-\u{27BF}]|[\u{1F000}-\u{1F02F}]|[\u{1F0A0}-\u{1F0FF}]|[\u{1F100}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]/gu, '')
-                    .replace(/^[^a-zA-Z0-9]+/, '') // Remove leading special characters
-                    .trim();
-            };
-
-            let cleanA = cleanTitle(titleA);
-            let cleanB = cleanTitle(titleB);
-
-            return cleanA.localeCompare(cleanB);
+            // Identical titles keep a stable order: oldest window first
+            return cleanTitle(titleA).localeCompare(cleanTitle(titleB)) ||
+                titleA.localeCompare(titleB) ||
+                a.get_stable_sequence() - b.get_stable_sequence();
         });
         
         // Clear existing items in the section
