@@ -9,6 +9,8 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import St from 'gi://St';
 
+import {AppMenuButton} from './appMenuButton.js';
+
 export default class AppMenuIsBackExtension {
     _sortMenuItems(menu) {
         // Get all menu items
@@ -125,62 +127,22 @@ export default class AppMenuIsBackExtension {
     }
 
     enable() {
-        log('AppMenu Extension enabled!');  // Test log
-        if (!Main.sessionMode.panel.left.includes('appMenu')) {
-            log('AppMenu Debug: Adding app menu to session mode');
-            Main.sessionMode.panel.left.push('appMenu');
-            Main.panel._updatePanel();
-            
-            // Get the app menu
-            const appMenu = Main.panel.statusArea.appMenu;
-            log('AppMenu Debug: Checking app menu initialization');
-            if (appMenu && appMenu.menu) {
-                log('AppMenu Debug: App menu found');
-                
-                // Connect to the menu's open signal
-                this._menuOpenId = appMenu.menu.connect('open-state-changed', (menu, isOpen) => {
-                    if (isOpen) {
-                        log('AppMenu Debug: Menu opened, sorting items');
-                        this._sortMenuItems(menu);
-                    }
-                });
-                
-                // Initial sort
-                log('AppMenu Debug: Performing initial sort');
-                this._sortMenuItems(appMenu.menu);
-            } else {
-                log('AppMenu Debug: App menu or menu not found');
-            }
+        // GNOME Shell 49 removed the built-in app menu, so we add our own
+        this._appMenu = new AppMenuButton();
+        Main.panel.addToStatusArea('appMenu', this._appMenu, 1, 'left');
 
-            Main.panel.statusArea.appMenu._container.remove_child(
-                Main.panel.statusArea.appMenu._spinner
-            );
-        }
-        log('AppMenu Debug: App menu added to session mode');
+        // Rebuild the window list each time the menu opens
+        this._appMenu.menu.connectObject('open-state-changed', (menu, isOpen) => {
+            if (isOpen)
+                this._sortMenuItems(menu);
+        }, this);
+
         this._shiftPlacesMenu();
     }
 
     disable() {
-        if (Main.sessionMode.panel.left.includes('appMenu')) {
-            // Disconnect the signal if we connected it
-            if (this._menuOpenId) {
-                const appMenu = Main.panel.statusArea.appMenu;
-                if (appMenu && appMenu.menu) {
-                    appMenu.menu.disconnect(this._menuOpenId);
-                }
-                this._menuOpenId = null;
-            }
-
-            Main.sessionMode.panel.left.pop();
-            Main.panel._updatePanel();
-
-            Main.panel.statusArea.appMenu._container.add_child(
-                Main.panel.statusArea.appMenu._spinner
-            );
-            Main.panel.statusArea.appMenu?.destroy();
-        }
-
-        this._shiftPlacesMenu();
+        this._appMenu?.destroy();
+        this._appMenu = null;
 
         if (this._timeout) {
             GLib.Source.remove(this._timeout);

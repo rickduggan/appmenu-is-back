@@ -1,12 +1,9 @@
 #!/bin/bash
+set -e
 
-cd ..
-pwd
-rm appmenu-is-back@rickduggan.shell-extension.zip
-gnome-extensions pack --force appmenu-is-back@rickduggan 
-gnome-extensions uninstall appmenu-is-back@rickduggan
+cd "$(dirname "$0")"
+gnome-extensions pack --force --extra-source=appMenuButton.js .
 gnome-extensions install --force appmenu-is-back@rickduggan.shell-extension.zip
-echo 'Alt+F2 r'
-#read -p 'Alt+F2 r'
-#gnome-extensions enable appmenu-is-back@rickduggan
-cd appmenu-is-back@rickduggan
+rm appmenu-is-back@rickduggan.shell-extension.zip
+gnome-extensions enable appmenu-is-back@rickduggan
+echo 'Installed. Log out and back in to load the new version.'
